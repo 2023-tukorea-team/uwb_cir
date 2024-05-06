@@ -62,7 +62,6 @@ uint8_t _ss = PIN_SS;
 uint16_t numReceived = 0; // todo check int type
 String message;
 
-SemaphoreHandle_t mutex;
 TaskHandle_t SerialTaskHandle;
     
 constexpr uint16_t LEN_FP_INDEX = 2;
@@ -103,9 +102,6 @@ void setup() {
   pmscBytes[0] |= 1 << FACE_BIT;
   pmscBytes[1] |= 1 << (AMCE_BIT - sizeof(byte));
   _writeBytesToRegister(PMSC, PMSC_CTRL0_SUB, pmscBytes, LEN_PMSC);
-  mutex = xSemaphoreCreateMutex();
-
-  xTaskCreatePinnedToCore(serialSendFunc, "task", 1000, nullptr, 1, NULL, 0);
 
   if(DEBUG){
     Serial.println(F("### DW1000Ng-arduino-receiver-test ###"));
@@ -141,9 +137,7 @@ void loop() {
   byte cirDataBytesTemp[LEN_CIR * 64 + 1];
   _readBytesFromRegister(ACC_MEM, f * LEN_CIR, cirDataBytesTemp, LEN_CIR * 64 + 1);
   
-  xSemaphoreTake(mutex, portMAX_DELAY);
   memcpy(cirDataBytes, &cirDataBytesTemp[1], LEN_CIR * 64);
-  xSemaphoreGive(mutex);
 
   int16_t real = *(int16_t*)(&cirDataBytes[0]);
   int16_t imag = *(int16_t*)(&cirDataBytes[2]);
@@ -157,30 +151,9 @@ void loop() {
     String fpIndexString = "fpIndex : "; fpIndexString += f;
     Serial.println(fpIndexString);
   }
-}
 
-byte* getCirData(byte* dst){
-  byte* ret = nullptr;
-  xSemaphoreTake(mutex, portMAX_DELAY);
-  memcpy(dst, cirDataBytes, LEN_CIR * 64);
-  xSemaphoreGive(mutex);
-  ret = dst;
-  return ret;
-}
-
-void serialSendFunc(void* arg){
-  while(1){
-    /*char buffer[20];
-    double distance = Anchor::getDistance();
-    dtostrf(distance, 10, 3, buffer);
-    serial.println(buffer);*/
-    byte data[LEN_CIR * 64] = {0,};
-    getCirData(data);
-    Serial.write(data, 256);
-    //Serial.println("anchor");
-    //Serial.println(*(int16_t*)&data[0]);
-    delay(1000);  // 1초 대기
-  }
+  Serial.write(cirDataBytes, 256);
+  //Serial.println(*(uint8_t*)&cirDataBytes[0]);
 }
 
 void _readBytesFromRegister(byte cmd, uint16_t offset, byte data[], uint16_t data_size) {
